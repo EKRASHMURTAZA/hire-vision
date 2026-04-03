@@ -4,12 +4,15 @@ import { Server } from "socket.io";
 import { createServer as createViteServer } from "vite";
 import path from "path";
 import { fileURLToPath } from "url";
+import "dotenv/config";
+import { geminiService } from "./server/ai.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 async function startServer() {
   const app = express();
+  app.use(express.json());
   const httpServer = createHttpServer(app);
   const io = new Server(httpServer, {
     cors: {
@@ -25,13 +28,23 @@ async function startServer() {
     res.json({ status: "ok" });
   });
 
+  app.post("/api/ai/generate", async (req, res) => {
+    const { prompt, systemInstruction, responseSchema } = req.body;
+    try {
+      const text = await geminiService.generateContent(prompt, systemInstruction, responseSchema);
+      res.json({ text });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
   // Socket.io logic
   io.on("connection", (socket) => {
     console.log("A user connected:", socket.id);
 
     socket.on("start-interview", (data) => {
       console.log("Interview started for:", data.name);
-      // Logic to initialize Gemini session could go here
+      // Logic to initialize AI session could go here
       socket.emit("interview-ready", { message: "AI Interviewer is ready." });
     });
 

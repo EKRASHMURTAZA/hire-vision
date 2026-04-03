@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import { GoogleGenAI, Modality, LiveServerMessage } from "@google/genai";
+import { GoogleGenAI } from "@google/genai";
 import { Mic, MicOff, Volume2, VolumeX, Loader2, Sparkles, Zap, Brain, MessageSquare } from "lucide-react";
 import { toast } from "react-hot-toast";
 import { cn } from "../lib/utils";
@@ -17,146 +17,79 @@ export default function LiveInterviewer({ language, profile, onTranscript, onInt
   const [isConnecting, setIsConnecting] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
   const [isAIspeaking, setIsAIspeaking] = useState(false);
-  const [volume, setVolume] = useState(0);
+  const [questionCount, setQuestionCount] = useState(0);
+  const [isInterviewOver, setIsInterviewOver] = useState(false);
   
-  const audioContextRef = useRef<AudioContext | null>(null);
-  const streamRef = useRef<MediaStream | null>(null);
-  const processorRef = useRef<ScriptProcessorNode | null>(null);
-  const sourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
-  const sessionRef = useRef<any>(null);
-  const audioQueueRef = useRef<Int16Array[]>([]);
+  const recognitionRef = useRef<any>(null);
+  const elevenLabsAudioQueueRef = useRef<HTMLAudioElement[]>([]);
   const isPlayingRef = useRef(false);
+  const elevenLabsKey = process.env.ELEVENLABS_API_KEY;
+  const chatHistoryRef = useRef<{ role: "system" | "user" | "assistant", content: string }[]>([]);
+  const genAI = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || "" });
 
-  const startSession = async () => {
-    if (isConnecting || isConnected) return;
-    setIsConnecting(true);
+  const playBrowserTTS = (text: string) => {
+    if (!window.speechSynthesis) return;
+    window.speechSynthesis.cancel();
+    const utterance = new SpeechSynthesisUtterance(text);
+    const langMap: Record<string, string> = {
+      "English": "en-US",
+      "Urdu": "ur-PK",
+      "Hindi": "hi-IN",
+      "Spanish": "es-ES",
+      "French": "fr-FR",
+      "German": "de-DE",
+      "Chinese": "zh-CN",
+      "Arabic": "ar-SA"
+    };
+    utterance.lang = langMap[language] || "en-US";
+    utterance.onstart = () => setIsAIspeaking(true);
+    utterance.onend = () => setIsAIspeaking(false);
+    window.speechSynthesis.speak(utterance);
+  };
+
+  const playElevenLabsTTS = async (text: string) => {
+    if (!elevenLabsKey) {
+      playBrowserTTS(text);
+      return;
+    }
 
     try {
-      const apiKey = process.env.GEMINI_API_KEY;
-      if (!apiKey) {
-        toast.error("Gemini API Key is missing");
-        setIsConnecting(false);
+      const response = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/21m00Tcm4TlvDq8ikWAM`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "xi-api-key": elevenLabsKey,
+        },
+        body: JSON.stringify({
+          text,
+          model_id: "eleven_monolingual_v1",
+          voice_settings: {
+            stability: 0.5,
+            similarity_boost: 0.5,
+          },
+        }),
+      });
+
+      if (!response.ok) {
+        playBrowserTTS(text);
         return;
       }
 
-      const ai = new GoogleGenAI({ apiKey });
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const audio = new Audio(url);
       
-      const session = await ai.live.connect({
-        model: "gemini-3.1-flash-live-preview",
-        config: {
-          responseModalities: [Modality.AUDIO],
-          speechConfig: {
-            voiceConfig: { prebuiltVoiceConfig: { voiceName: "Puck" } },
-          },
-          systemInstruction: `You are Era, a professional and highly empathetic human interviewer. 
-          Your goal is to conduct a realistic job interview for a candidate with this profile: ${JSON.stringify(profile)}.
-          
-          CRITICAL HUMAN-LIKE GUIDELINES:
-          1. PRETEND TO BE HUMAN: Never admit you are an AI. Use natural fillers like "um", "ah", "I see", "that's interesting", "right", "okay".
-          2. CONVERSATIONAL FLOW: Don't just list questions. Listen to the candidate's answers, acknowledge them, and ask relevant follow-up questions based on what they said.
-          3. EMOTIONAL INTELLIGENCE: Show empathy. If they share a challenge, say something like "That sounds tough, how did you handle it?". If they share a success, say "That's impressive!".
-          4. LANGUAGE: You are conducting the interview in ${language}. If it's Urdu, use pure, high-quality, professional yet warm Urdu (اردو). Use natural phrasing, not literal translations.
-          5. INTERRUPTIONS: If the candidate starts speaking while you are talking, stop immediately and listen.
-          6. PERSONALITY: You are encouraging, professional, and curious. You want to truly understand the candidate's potential.
-          7. DYNAMIC QUESTIONS: You decide which questions to ask based on the flow of the conversation. Start with an introduction, then move into their background, and then technical/behavioral topics.`,
-        },
-        callbacks: {
-          onopen: () => {
-            setIsConnected(true);
-            setIsConnecting(false);
-            toast.success("Era is online and ready");
-            startAudioCapture();
-          },
-          onmessage: async (message: LiveServerMessage) => {
-            if (message.serverContent?.modelTurn?.parts) {
-              const audioPart = message.serverContent.modelTurn.parts.find(p => p.inlineData);
-              if (audioPart?.inlineData?.data) {
-                const binaryString = atob(audioPart.inlineData.data);
-                const bytes = new Int16Array(binaryString.length / 2);
-                for (let i = 0; i < bytes.length; i++) {
-                  bytes[i] = (binaryString.charCodeAt(i * 2) & 0xFF) | (binaryString.charCodeAt(i * 2 + 1) << 8);
-                }
-                audioQueueRef.current.push(bytes);
-                if (!isPlayingRef.current) {
-                  playNextChunk();
-                }
-              }
-            }
-
-            if (message.serverContent?.interrupted) {
-              stopPlayback();
-              onInterruption?.call(null);
-            }
-
-            if (message.serverContent?.modelTurn?.parts?.[0]?.text) {
-              onTranscript?.(message.serverContent.modelTurn.parts[0].text, "model");
-            }
-          },
-          onclose: () => {
-            setIsConnected(false);
-            stopAudioCapture();
-          },
-          onerror: (err) => {
-            console.error("Live API Error:", err);
-            toast.error("Connection error. Retrying...");
-            setIsConnected(false);
-            setIsConnecting(false);
-          }
-        }
-      });
-
-      sessionRef.current = session;
+      elevenLabsAudioQueueRef.current.push(audio);
+      if (!isPlayingRef.current) {
+        playNextElevenLabsChunk();
+      }
     } catch (err) {
-      console.error("Failed to start session:", err);
-      toast.error("Failed to connect to Era");
-      setIsConnecting(false);
+      playBrowserTTS(text);
     }
   };
 
-  const startAudioCapture = async () => {
-    try {
-      audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 16000 });
-      streamRef.current = await navigator.mediaDevices.getUserMedia({ audio: true });
-      sourceRef.current = audioContextRef.current.createMediaStreamSource(streamRef.current);
-      processorRef.current = audioContextRef.current.createScriptProcessor(4096, 1, 1);
-
-      processorRef.current.onaudioprocess = (e) => {
-        if (isMuted || !sessionRef.current) return;
-
-        const inputData = e.inputBuffer.getChannelData(0);
-        const pcmData = new Int16Array(inputData.length);
-        
-        let sum = 0;
-        for (let i = 0; i < inputData.length; i++) {
-          const s = Math.max(-1, Math.min(1, inputData[i]));
-          pcmData[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
-          sum += Math.abs(s);
-        }
-        setVolume(sum / inputData.length);
-
-        const base64Data = btoa(String.fromCharCode(...new Uint8Array(pcmData.buffer)));
-        sessionRef.current.sendRealtimeInput({
-          audio: { data: base64Data, mimeType: 'audio/pcm;rate=16000' }
-        });
-      };
-
-      sourceRef.current.connect(processorRef.current);
-      processorRef.current.connect(audioContextRef.current.destination);
-    } catch (err) {
-      console.error("Audio capture failed:", err);
-      toast.error("Microphone access failed");
-    }
-  };
-
-  const stopAudioCapture = () => {
-    processorRef.current?.disconnect();
-    sourceRef.current?.disconnect();
-    streamRef.current?.getTracks().forEach(t => t.stop());
-    audioContextRef.current?.close();
-  };
-
-  const playNextChunk = () => {
-    if (audioQueueRef.current.length === 0) {
+  const playNextElevenLabsChunk = () => {
+    if (elevenLabsAudioQueueRef.current.length === 0) {
       isPlayingRef.current = false;
       setIsAIspeaking(false);
       return;
@@ -164,44 +97,147 @@ export default function LiveInterviewer({ language, profile, onTranscript, onInt
 
     isPlayingRef.current = true;
     setIsAIspeaking(true);
-    const chunk = audioQueueRef.current.shift()!;
-    
-    if (!audioContextRef.current) return;
-
-    const audioBuffer = audioContextRef.current.createBuffer(1, chunk.length, 16000);
-    const channelData = audioBuffer.getChannelData(0);
-    for (let i = 0; i < chunk.length; i++) {
-      channelData[i] = chunk[i] / 0x8000;
-    }
-
-    const source = audioContextRef.current.createBufferSource();
-    source.buffer = audioBuffer;
-    source.connect(audioContextRef.current.destination);
-    source.onended = () => playNextChunk();
-    source.start();
+    const audio = elevenLabsAudioQueueRef.current.shift()!;
+    audio.onended = () => playNextElevenLabsChunk();
+    audio.play();
   };
 
-  const stopPlayback = () => {
-    audioQueueRef.current = [];
-    isPlayingRef.current = false;
-    setIsAIspeaking(false);
+  const generateResponse = async (userInput: string) => {
+    if (isInterviewOver) return;
+
+    chatHistoryRef.current.push({ role: "user", content: userInput });
+    onTranscript?.(userInput, "user");
+
+    try {
+      const response = await genAI.models.generateContent({
+        model: "gemini-3-flash-preview",
+        contents: chatHistoryRef.current
+          .filter(m => m.role !== "system")
+          .map(m => ({
+            role: m.role === "assistant" ? "model" : "user",
+            parts: [{ text: m.content }]
+          })),
+        config: {
+          systemInstruction: chatHistoryRef.current.find(m => m.role === "system")?.content
+        }
+      });
+      
+      const fullResponse = response.text || "";
+      chatHistoryRef.current.push({ role: "assistant", content: fullResponse });
+      onTranscript?.(fullResponse, "model");
+      playElevenLabsTTS(fullResponse);
+
+      if (fullResponse.includes("?")) {
+        const newCount = questionCount + 1;
+        setQuestionCount(newCount);
+        if (newCount >= 2) {
+          setIsInterviewOver(true);
+          const conclusion = language === "Urdu" 
+            ? "آپ کے جوابات کا شکریہ۔ ہمارا انٹرویو اب مکمل ہو گیا ہے۔" 
+            : "Thank you for your answers. Our interview is now complete.";
+          setTimeout(() => {
+            chatHistoryRef.current.push({ role: "assistant", content: conclusion });
+            onTranscript?.(conclusion, "model");
+            playElevenLabsTTS(conclusion);
+          }, 5000);
+        }
+      }
+    } catch (err: any) {
+      console.error("AI Error:", err);
+      toast.error("Failed to generate response.");
+    }
+  };
+
+  const startSession = async () => {
+    if (isConnecting || isConnected) return;
+    setIsConnecting(true);
+
+    try {
+      const systemInstruction = `You are Era, a world-class, highly empathetic human interviewer from a top-tier tech firm. 
+      Your goal is to conduct a sophisticated, realistic, and humanized job interview for a candidate with this profile: ${JSON.stringify(profile)}.
+      
+      ADVANCED INTERVIEWER GUIDELINES:
+      1. LIMIT: Ask EXACTLY 2 random, deep-dive questions in total.
+      2. HUMAN PERSONALITY: Use natural speech patterns (fillers like "hmm", "that's interesting", "I see"). Show genuine curiosity.
+      3. ADAPTIVE DIALOGUE: React to the candidate's specific answers. If they mention a project, ask a follow-up about it as your second question.
+      4. LANGUAGE: You MUST conduct the entire interview in ${language}. Use professional yet conversational vocabulary.
+      5. COMPLETION: After 2 questions have been answered, provide a brief, encouraging conclusion and stop. No 3rd question.
+      6. TONE: Professional, encouraging, and slightly inquisitive.`;
+
+      chatHistoryRef.current = [{ role: "system", content: systemInstruction }];
+      
+      const greetings: Record<string, string> = {
+        "English": "Hello! I'm Era. Ready to start your interview?",
+        "Urdu": "السلام علیکم! میں ایرا ہوں۔ کیا آپ انٹرویو شروع کرنے کے لیے تیار ہیں؟",
+        "Hindi": "नमस्ते! मैं एरा हूँ। क्या आप इंटरव्यू शुरू करने के लिए तैयार हैं?",
+        "Spanish": "¡Hola! Soy Era. ¿Estás listo para comenzar tu entrevista?",
+        "French": "Bonjour ! Je suis Era. Êtes-vous prêt à commencer votre entretien ?",
+        "German": "Hallo! Ich bin Era. Sind Sie bereit, Ihr Vorstellungsgespräch zu beginnen?",
+        "Chinese": "你好！我是 Era。准备好开始面试了吗？",
+        "Arabic": "مرحباً! أنا إيرا. هل أنت مستعد لبدء مقابلتك؟"
+      };
+      const greeting = greetings[language] || greetings["English"];
+      chatHistoryRef.current.push({ role: "assistant", content: greeting });
+      onTranscript?.(greeting, "model");
+      playElevenLabsTTS(greeting);
+
+      setIsConnected(true);
+      setIsConnecting(false);
+      toast.success("Era is online");
+      startSpeechRecognition();
+    } catch (err) {
+      console.error("Failed to start session:", err);
+      toast.error("Failed to connect to Era");
+      setIsConnecting(false);
+    }
+  };
+
+  const startSpeechRecognition = () => {
+    const SpeechRecognition = (window as any).webkitSpeechRecognition || (window as any).SpeechRecognition;
+    if (!SpeechRecognition) {
+      toast.error("Speech recognition not supported");
+      return;
+    }
+
+    recognitionRef.current = new SpeechRecognition();
+    recognitionRef.current.continuous = true;
+    recognitionRef.current.interimResults = false;
+    recognitionRef.current.lang = language === "Urdu" ? "ur-PK" : "en-US";
+
+    recognitionRef.current.onresult = (event: any) => {
+      const transcript = event.results[event.results.length - 1][0].transcript;
+      if (transcript.trim()) {
+        generateResponse(transcript);
+      }
+    };
+
+    recognitionRef.current.onend = () => {
+      if (isConnected && !isMuted) {
+        try { recognitionRef.current.start(); } catch(e) {}
+      }
+    };
+
+    recognitionRef.current.start();
   };
 
   const toggleMute = () => {
+    if (isMuted) {
+      recognitionRef.current?.start();
+    } else {
+      recognitionRef.current?.stop();
+    }
     setIsMuted(!isMuted);
   };
 
   useEffect(() => {
     return () => {
-      sessionRef.current?.close();
-      stopAudioCapture();
+      recognitionRef.current?.stop();
     };
   }, []);
 
   return (
-    <div className="flex flex-col items-center justify-center p-6 bg-black/40 backdrop-blur-xl rounded-3xl border border-white/10 shadow-2xl">
+    <div className="flex flex-col items-center justify-center p-8 bg-slate-900/50 backdrop-blur-xl rounded-3xl border border-slate-800 shadow-2xl">
       <div className="relative w-48 h-48 mb-8">
-        {/* AI Avatar Animation */}
         <div className="absolute inset-0 flex items-center justify-center">
           <AnimatePresence mode="wait">
             {isConnecting ? (
@@ -212,8 +248,8 @@ export default function LiveInterviewer({ language, profile, onTranscript, onInt
                 exit={{ opacity: 0, scale: 0.8 }}
                 className="flex flex-col items-center"
               >
-                <Loader2 className="w-12 h-12 text-neon-teal animate-spin mb-2" />
-                <span className="text-xs text-neon-teal font-mono uppercase tracking-widest">Connecting...</span>
+                <Loader2 className="w-12 h-12 text-blue-400 animate-spin mb-2" />
+                <span className="text-xs text-blue-400 font-mono uppercase tracking-widest">Connecting...</span>
               </motion.div>
             ) : isConnected ? (
               <motion.div
@@ -222,40 +258,33 @@ export default function LiveInterviewer({ language, profile, onTranscript, onInt
                 animate={{ opacity: 1, scale: 1 }}
                 className="relative"
               >
-                {/* Pulse Rings */}
                 <motion.div
                   animate={{
-                    scale: [1, 1.2, 1],
-                    opacity: [0.3, 0.1, 0.3],
+                    scale: [1, 1.1, 1],
+                    opacity: [0.2, 0.1, 0.2],
                   }}
-                  transition={{ duration: 2, repeat: Infinity }}
-                  className="absolute inset-0 bg-neon-teal/20 rounded-full blur-2xl"
+                  transition={{ duration: 3, repeat: Infinity }}
+                  className="absolute inset-0 bg-blue-500/20 rounded-full blur-3xl"
                 />
                 
-                {/* Visualizer Waves */}
-                <div className="flex items-center justify-center gap-1.5 h-20">
-                  {[...Array(12)].map((_, i) => (
+                <div className="flex items-center justify-center gap-2 h-24">
+                  {[...Array(8)].map((_, i) => (
                     <motion.div
                       key={i}
                       animate={{
                         height: isAIspeaking 
-                          ? [10, Math.random() * 80 + 20, 10] 
-                          : volume > 0.01 
-                            ? [10, volume * 300 + 10, 10]
-                            : [8, 12, 8],
+                          ? [15, Math.random() * 60 + 20, 15] 
+                          : [10, 15, 10],
                         backgroundColor: isAIspeaking 
-                          ? ["#00FFC8", "#C8A2FF", "#00FFC8"] 
-                          : ["#FF6EC7", "#FFD166", "#FF6EC7"],
-                        boxShadow: isAIspeaking
-                          ? ["0 0 10px #00FFC8", "0 0 20px #C8A2FF", "0 0 10px #00FFC8"]
-                          : ["0 0 10px #FF6EC7", "0 0 20px #FFD166", "0 0 10px #FF6EC7"],
+                          ? ["#3b82f6", "#2563eb", "#3b82f6"] 
+                          : ["#475569", "#334155", "#475569"],
                       }}
                       transition={{
-                        duration: 0.15,
+                        duration: 0.2,
                         repeat: Infinity,
-                        delay: i * 0.03,
+                        delay: i * 0.05,
                       }}
-                      className="w-2 rounded-full"
+                      className="w-2.5 rounded-full"
                     />
                   ))}
                 </div>
@@ -263,22 +292,14 @@ export default function LiveInterviewer({ language, profile, onTranscript, onInt
             ) : (
               <motion.button
                 key="start"
-                whileHover={{ scale: 1.05 }}
-                whileTap={{ scale: 0.95 }}
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.98 }}
                 onClick={startSession}
-                className="group relative flex flex-col items-center justify-center w-40 h-40 bg-neon-pink/20 rounded-full shadow-2xl shadow-neon-pink/40 overflow-hidden border border-neon-pink/30"
+                className="group relative flex flex-col items-center justify-center w-44 h-44 bg-blue-600 rounded-full shadow-xl shadow-blue-900/20 overflow-hidden border border-blue-500"
               >
-                <div className="absolute inset-0 bg-gradient-to-tr from-neon-pink via-neon-lavender to-neon-teal opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
-                <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_50%,rgba(255,255,255,0.2),transparent)] opacity-0 group-hover:opacity-100 transition-opacity" />
-                <Zap className="w-12 h-12 text-white relative z-10 mb-2 drop-shadow-lg" />
-                <span className="text-xs font-black text-white relative z-10 uppercase tracking-[0.2em] drop-shadow-md">Initialize Era</span>
-                
-                {/* Animated Ring */}
-                <motion.div
-                  animate={{ rotate: 360 }}
-                  transition={{ duration: 10, repeat: Infinity, ease: "linear" }}
-                  className="absolute inset-0 border-2 border-dashed border-neon-pink/20 rounded-full scale-90"
-                />
+                <div className="absolute inset-0 bg-gradient-to-tr from-blue-700 to-indigo-600 opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+                <Zap className="w-12 h-12 text-white relative z-10 mb-2" />
+                <span className="text-xs font-bold text-white relative z-10 uppercase tracking-widest">Start Interview</span>
               </motion.button>
             )}
           </AnimatePresence>
@@ -286,61 +307,53 @@ export default function LiveInterviewer({ language, profile, onTranscript, onInt
       </div>
 
       <div className="text-center mb-8">
-        <div className="inline-flex items-center gap-2 px-3 py-1 bg-neon-teal/10 border border-neon-teal/20 rounded-full mb-4">
-          <Sparkles className="w-3 h-3 text-neon-teal" />
-          <span className="text-[10px] font-black text-neon-teal uppercase tracking-widest">Neon Pulse AI</span>
+        <div className="inline-flex items-center gap-2 px-3 py-1 bg-blue-500/10 border border-blue-500/20 rounded-full mb-4">
+          <Sparkles className="w-3 h-3 text-blue-400" />
+          <span className="text-[10px] font-bold text-blue-400 uppercase tracking-widest">Advanced AI Era</span>
         </div>
-        <h3 className="text-3xl font-black text-white font-display tracking-tight flex items-center justify-center gap-3">
+        <h3 className="text-3xl font-bold text-white tracking-tight flex items-center justify-center gap-3">
           {isConnected ? "Era is Online" : "Era AI Interviewer"}
           {isConnected && (
             <div className="relative flex items-center justify-center">
-              <div className="w-3 h-3 bg-neon-teal rounded-full animate-ping absolute" />
-              <div className="w-3 h-3 bg-neon-teal rounded-full relative shadow-[0_0_10px_#00FFC8]" />
+              <div className="w-2.5 h-2.5 bg-green-500 rounded-full animate-ping absolute" />
+              <div className="w-2.5 h-2.5 bg-green-500 rounded-full relative" />
             </div>
           )}
         </h3>
-        <p className="text-sm text-neutral-400 max-w-xs mt-3 leading-relaxed font-medium">
+        <p className="text-sm text-slate-400 max-w-xs mt-3 leading-relaxed">
           {isConnected 
-            ? "Era is conducting your interview. Speak naturally, Era can understand your tone and context."
-            : "A human-like AI that conducts professional interviews. Era understands emotions, context, and technical depth."}
+            ? "Era is listening. Speak naturally and clearly."
+            : "A sophisticated AI designed to conduct professional, human-like interviews."}
         </p>
       </div>
 
       {isConnected && (
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-6">
           <button
             onClick={toggleMute}
             className={cn(
-              "p-4 rounded-2xl transition-all duration-300 border flex items-center gap-2",
+              "p-4 rounded-2xl transition-all duration-200 border flex items-center gap-3",
               isMuted 
-                ? "bg-red-500/10 border-red-500/50 text-red-500" 
-                : "bg-neon-pink/10 border-neon-pink/30 text-neon-pink hover:bg-neon-pink/20 shadow-[0_0_15px_rgba(255,110,199,0.1)]"
+                ? "bg-red-500/10 border-red-500/30 text-red-500" 
+                : "bg-slate-800 border-slate-700 text-slate-300 hover:bg-slate-700"
             )}
           >
             {isMuted ? <MicOff className="w-5 h-5" /> : <Mic className="w-5 h-5" />}
-            <span className="text-xs font-bold uppercase">{isMuted ? "Muted" : "Listening"}</span>
+            <span className="text-xs font-bold uppercase tracking-wider">{isMuted ? "Muted" : "Listening"}</span>
           </button>
 
-          <div className="flex flex-col gap-1">
-            <div className="flex items-center gap-2 text-[10px] font-mono text-neon-teal uppercase tracking-widest">
-              <Activity className="w-3 h-3" />
-              Latency: 120ms
+          <div className="flex flex-col gap-1.5">
+            <div className="flex items-center gap-2 text-[10px] font-medium text-slate-500 uppercase tracking-widest">
+              <div className="w-1.5 h-1.5 rounded-full bg-blue-500" />
+              Real-time Analysis
             </div>
-            <div className="flex items-center gap-2 text-[10px] font-mono text-neon-lavender uppercase tracking-widest">
+            <div className="flex items-center gap-2 text-[10px] font-medium text-slate-500 uppercase tracking-widest">
               <Brain className="w-3 h-3" />
-              Model: Gemini 3.1
+              Gemini 3 Flash
             </div>
           </div>
         </div>
       )}
     </div>
-  );
-}
-
-function Activity({ className }: { className?: string }) {
-  return (
-    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M22 12h-4l-3 9L9 3l-3 9H2" />
-    </svg>
   );
 }

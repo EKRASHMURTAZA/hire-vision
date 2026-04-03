@@ -40,8 +40,8 @@ export default function Report() {
     : 0;
 
   return (
-    <div className="min-h-screen bg-[#0D0F1A] text-white font-sans selection:bg-neon-teal/30">
-      <div className="absolute top-0 left-0 w-full h-full bg-[radial-gradient(circle_at_50%_50%,rgba(0,255,200,0.03),transparent)] -z-10" />
+    <div className="min-h-screen bg-slate-950 text-slate-200 font-sans selection:bg-blue-500/30">
+      <div className="absolute top-0 left-0 w-full h-full bg-[radial-gradient(circle_at_50%_50%,rgba(59,130,246,0.03),transparent)] -z-10" />
       
       <div className="max-w-6xl mx-auto px-8 py-16 relative">
         <BackButton />
@@ -49,20 +49,20 @@ export default function Report() {
         <header className="flex justify-between items-center mb-16">
           <div className="ml-12">
             <div className="flex items-center gap-3">
-              <div className="w-12 h-12 bg-neon-teal rounded-2xl flex items-center justify-center shadow-lg shadow-neon-teal/20">
-                <Trophy className="text-black w-7 h-7" />
+              <div className="w-12 h-12 bg-blue-600 rounded-2xl flex items-center justify-center shadow-lg shadow-blue-600/20">
+                <Trophy className="text-white w-7 h-7" />
               </div>
               <div>
-                <h1 className="text-2xl font-black font-display tracking-tight">Interview <span className="text-neon-pink">Report</span></h1>
-                <p className="text-[10px] font-bold text-neutral-500 uppercase tracking-widest">Performance Analysis v2.0</p>
+                <h1 className="text-2xl font-black font-display tracking-tight text-white">Interview <span className="text-blue-500">Report</span></h1>
+                <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Performance Analysis v2.0</p>
               </div>
             </div>
           </div>
           <div className="flex gap-4">
             <button className="p-4 bg-white/5 hover:bg-white/10 border border-white/10 rounded-2xl transition-all group">
-              <Share2 className="w-5 h-5 text-neutral-400 group-hover:text-white" />
+              <Share2 className="w-5 h-5 text-slate-400 group-hover:text-white" />
             </button>
-            <button className="neon-btn flex items-center gap-3">
+            <button className="btn-primary flex items-center gap-3">
               <Download className="w-5 h-5" /> Download PDF
             </button>
           </div>
@@ -73,19 +73,19 @@ export default function Report() {
           <motion.div 
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            className="lg:col-span-2 p-12 bg-gradient-to-br from-neon-teal/20 to-neon-pink/20 border border-white/10 backdrop-blur-3xl rounded-[3.5rem] relative overflow-hidden shadow-2xl group hover-3d"
+            className="lg:col-span-2 p-12 bg-gradient-to-br from-blue-600/10 to-indigo-600/10 border border-slate-800 backdrop-blur-3xl rounded-[3.5rem] relative overflow-hidden shadow-2xl group"
           >
-            <div className="absolute inset-0 bg-gradient-to-br from-neon-teal/5 to-neon-pink/5 opacity-0 group-hover:opacity-100 transition-opacity duration-700" />
+            <div className="absolute inset-0 bg-gradient-to-br from-blue-500/5 to-indigo-500/5 opacity-0 group-hover:opacity-100 transition-opacity duration-700" />
             <div className="relative z-10">
               <div className="flex items-center gap-3 mb-8">
-                <Award className="w-8 h-8 text-neon-teal" />
-                <span className="text-xs font-black uppercase tracking-widest text-neutral-400">Final Assessment</span>
+                <Award className="w-8 h-8 text-blue-400" />
+                <span className="text-xs font-black uppercase tracking-widest text-slate-400">Final Assessment</span>
               </div>
               <div className="flex items-end gap-8 mb-10">
-                <h1 className="text-9xl font-black text-white leading-none tracking-tighter drop-shadow-[0_0_30px_rgba(0,255,200,0.3)]">{averageScore}</h1>
+                <h1 className="text-9xl font-black text-white leading-none tracking-tighter drop-shadow-[0_0_30px_rgba(59,130,246,0.3)]">{averageScore}</h1>
                 <div className="mb-4">
                   <div className="text-3xl font-black text-white/90 font-display tracking-tight">Overall Score</div>
-                  <div className="text-neutral-400 font-medium max-w-md leading-relaxed mt-2">
+                  <div className="text-slate-400 font-medium max-w-md leading-relaxed mt-2">
                     {averageScore >= 80 
                       ? `CONGRATULATIONS, ${profile.name}! You've demonstrated exceptional readiness. This is a top-tier performance.` 
                       : `Solid effort, ${profile.name}! You've shown strong potential. Focus on the refinement areas below.`}
@@ -94,15 +94,15 @@ export default function Report() {
               </div>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
                 {[
-                  { label: "Confidence", val: "82%", icon: Zap, color: "text-neon-yellow" },
-                  { label: "Clarity", val: "75%", icon: MessageSquare, color: "text-neon-teal" },
-                  { label: "Technical", val: "88%", icon: Brain, color: "text-neon-lavender" },
-                  { label: "Dressing", val: dressing ? `${dressing.score}%` : "N/A", icon: Shirt, color: "text-neon-pink" }
+                  { label: "Confidence", val: "82%", icon: Zap, color: "text-blue-400" },
+                  { label: "Clarity", val: "75%", icon: MessageSquare, color: "text-indigo-400" },
+                  { label: "Technical", val: "88%", icon: Brain, color: "text-blue-400" },
+                  { label: "Dressing", val: dressing ? `${dressing.score}%` : "N/A", icon: Shirt, color: "text-indigo-400" }
                 ].map(s => (
                   <div key={s.label} className="p-5 bg-white/5 backdrop-blur-xl rounded-3xl border border-white/10 group-hover:bg-white/10 transition-all">
                     <div className="flex items-center gap-2 mb-2">
                       <s.icon className={cn("w-3.5 h-3.5", s.color)} />
-                      <div className="text-[10px] font-black uppercase tracking-widest text-neutral-500">{s.label}</div>
+                      <div className="text-[10px] font-black uppercase tracking-widest text-slate-500">{s.label}</div>
                     </div>
                     <div className="text-2xl font-black text-white">{s.val}</div>
                   </div>
@@ -114,15 +114,15 @@ export default function Report() {
 
           {/* Quick Insights */}
           <div className="space-y-8">
-            <div className="p-10 bg-white/5 border border-white/10 rounded-[3rem] relative overflow-hidden group hover:border-neon-teal/30 transition-all">
+            <div className="p-10 bg-white/5 border border-white/10 rounded-[3rem] relative overflow-hidden group hover:border-blue-500/30 transition-all">
               <div className="absolute top-0 right-0 p-6 opacity-5 group-hover:opacity-10 transition-opacity">
-                <TrendingUp className="w-20 h-20 text-neon-teal" />
+                <TrendingUp className="w-20 h-20 text-blue-400" />
               </div>
               <div className="flex items-center gap-3 mb-8">
-                <div className="w-10 h-10 bg-neon-teal/10 rounded-xl flex items-center justify-center">
-                  <TrendingUp className="w-5 h-5 text-neon-teal" />
+                <div className="w-10 h-10 bg-blue-500/10 rounded-xl flex items-center justify-center">
+                  <TrendingUp className="w-5 h-5 text-blue-400" />
                 </div>
-                <h3 className="font-black font-display uppercase tracking-widest text-sm">Key Strengths</h3>
+                <h3 className="font-black font-display uppercase tracking-widest text-sm text-white">Key Strengths</h3>
               </div>
               <ul className="space-y-5">
                 {[
@@ -130,23 +130,23 @@ export default function Report() {
                   "Excellent problem-solving logic",
                   "Professional communication tone"
                 ].map((s, i) => (
-                  <li key={i} className="flex items-start gap-4 text-sm text-neutral-400 font-medium">
-                    <CheckCircle2 className="w-5 h-5 text-neon-teal shrink-0 mt-0.5" />
+                  <li key={i} className="flex items-start gap-4 text-sm text-slate-400 font-medium">
+                    <CheckCircle2 className="w-5 h-5 text-blue-400 shrink-0 mt-0.5" />
                     {s}
                   </li>
                 ))}
               </ul>
             </div>
             
-            <div className="p-10 bg-white/5 border border-white/10 rounded-[3rem] relative overflow-hidden group hover:border-neon-yellow/30 transition-all">
+            <div className="p-10 bg-white/5 border border-white/10 rounded-[3rem] relative overflow-hidden group hover:border-indigo-500/30 transition-all">
               <div className="absolute top-0 right-0 p-6 opacity-5 group-hover:opacity-10 transition-opacity">
-                <Zap className="w-20 h-20 text-neon-yellow" />
+                <Zap className="w-20 h-20 text-indigo-400" />
               </div>
               <div className="flex items-center gap-3 mb-8">
-                <div className="w-10 h-10 bg-neon-yellow/10 rounded-xl flex items-center justify-center">
-                  <Zap className="w-5 h-5 text-neon-yellow" />
+                <div className="w-10 h-10 bg-indigo-500/10 rounded-xl flex items-center justify-center">
+                  <Zap className="w-5 h-5 text-indigo-400" />
                 </div>
-                <h3 className="font-black font-display uppercase tracking-widest text-sm">Areas to Improve</h3>
+                <h3 className="font-black font-display uppercase tracking-widest text-sm text-white">Areas to Improve</h3>
               </div>
               <ul className="space-y-5">
                 {[
@@ -154,8 +154,8 @@ export default function Report() {
                   "Reduce filler words (um, ah)",
                   "Structure long answers better"
                 ].map((s, i) => (
-                  <li key={i} className="flex items-start gap-4 text-sm text-neutral-400 font-medium">
-                    <AlertCircle className="w-5 h-5 text-neon-yellow shrink-0 mt-0.5" />
+                  <li key={i} className="flex items-start gap-4 text-sm text-slate-400 font-medium">
+                    <AlertCircle className="w-5 h-5 text-indigo-400 shrink-0 mt-0.5" />
                     {s}
                   </li>
                 ))}
@@ -169,32 +169,32 @@ export default function Report() {
           <motion.div 
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            className="mb-16 p-10 bg-white/5 border border-white/10 rounded-[3.5rem] relative overflow-hidden hover:border-neon-pink/30 transition-all"
+            className="mb-16 p-10 bg-white/5 border border-white/10 rounded-[3.5rem] relative overflow-hidden hover:border-blue-500/30 transition-all"
           >
             <div className="flex flex-col md:flex-row gap-12 items-center">
               <div className="w-full md:w-1/3 text-center">
                 <div className="relative inline-block">
-                  <div className="w-40 h-40 rounded-full border-8 border-neon-pink/20 flex items-center justify-center shadow-[0_0_20px_rgba(255,110,199,0.1)]">
-                    <div className="text-5xl font-black text-neon-pink">{dressing.score}%</div>
+                  <div className="w-40 h-40 rounded-full border-8 border-blue-500/20 flex items-center justify-center shadow-lg shadow-blue-500/10">
+                    <div className="text-5xl font-black text-blue-500">{dressing.score}%</div>
                   </div>
-                  <div className="absolute -bottom-2 left-1/2 -translate-x-1/2 px-4 py-1 bg-neon-pink text-white rounded-full text-[10px] font-black uppercase tracking-widest shadow-[0_0_15px_rgba(255,110,199,0.3)]">
+                  <div className="absolute -bottom-2 left-1/2 -translate-x-1/2 px-4 py-1 bg-blue-600 text-white rounded-full text-[10px] font-black uppercase tracking-widest shadow-lg shadow-blue-600/20">
                     Attire Score
                   </div>
                 </div>
               </div>
               <div className="flex-1">
-                <h3 className="text-2xl font-black font-display mb-4 flex items-center gap-3">
-                  <Shirt className="w-6 h-6 text-neon-pink" />
+                <h3 className="text-2xl font-black font-display mb-4 flex items-center gap-3 text-white">
+                  <Shirt className="w-6 h-6 text-blue-400" />
                   Dressing Checkup Results
                 </h3>
-                <p className="text-neutral-400 font-medium leading-relaxed mb-8">
+                <p className="text-slate-400 font-medium leading-relaxed mb-8">
                   Our visual AI analyzed your professional attire during the session. Here's the breakdown:
                 </p>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   {dressing.feedback?.split('\n').filter(f => f.trim()).map((f, i) => (
                     <div key={i} className="p-4 bg-white/[0.02] border border-white/5 rounded-2xl flex items-start gap-3">
-                      <div className="w-2 h-2 bg-neon-pink rounded-full mt-1.5 shrink-0 shadow-[0_0_5px_#FF6EC7]" />
-                      <span className="text-sm text-neutral-400 font-medium">{f.replace(/^[*-]\s*/, '')}</span>
+                      <div className="w-2 h-2 bg-blue-500 rounded-full mt-1.5 shrink-0 shadow-lg shadow-blue-500/50" />
+                      <span className="text-sm text-slate-400 font-medium">{f.replace(/^[*-]\s*/, '')}</span>
                     </div>
                   ))}
                 </div>
@@ -206,11 +206,11 @@ export default function Report() {
         {/* Detailed Breakdown */}
         <div className="space-y-10">
           <div className="flex items-center justify-between mb-4">
-            <h2 className="text-3xl font-black font-display flex items-center gap-4 tracking-tight">
-              <BarChart3 className="w-10 h-10 text-neon-teal" />
+            <h2 className="text-3xl font-black font-display flex items-center gap-4 tracking-tight text-white">
+              <BarChart3 className="w-10 h-10 text-blue-400" />
               Question Breakdown
             </h2>
-            <div className="px-4 py-2 bg-white/5 border border-white/10 rounded-full text-[10px] font-black uppercase tracking-widest text-neutral-500">
+            <div className="px-4 py-2 bg-white/5 border border-white/10 rounded-full text-[10px] font-black uppercase tracking-widest text-slate-500">
               {results.length} Total Questions
             </div>
           </div>
@@ -222,41 +222,41 @@ export default function Report() {
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: i * 0.1 }}
-                className="p-10 bg-white/5 border border-white/10 rounded-[3.5rem] hover:bg-white/[0.08] hover:border-neon-teal/30 transition-all group relative overflow-hidden"
+                className="p-10 bg-white/5 border border-white/10 rounded-[3.5rem] hover:bg-white/[0.08] hover:border-blue-500/30 transition-all group relative overflow-hidden"
               >
                 <div className="absolute top-0 right-0 p-12 opacity-[0.02] group-hover:opacity-[0.05] transition-opacity">
-                  <MessageSquare className="w-40 h-40 text-neon-teal" />
+                  <MessageSquare className="w-40 h-40 text-blue-400" />
                 </div>
                 
                 <div className="flex flex-col lg:flex-row justify-between items-start gap-8 mb-10 relative z-10">
                   <div className="max-w-3xl">
-                    <div className="inline-flex items-center gap-2 px-3 py-1 bg-neon-teal/10 text-neon-teal border border-neon-teal/20 rounded-full text-[10px] font-black uppercase tracking-widest mb-4">
+                    <div className="inline-flex items-center gap-2 px-3 py-1 bg-blue-500/10 text-blue-400 border border-blue-500/20 rounded-full text-[10px] font-black uppercase tracking-widest mb-4">
                       Question {i + 1}
                     </div>
-                    <h4 className="text-2xl md:text-3xl font-black font-display tracking-tight leading-tight">{res.question}</h4>
+                    <h4 className="text-2xl md:text-3xl font-black font-display tracking-tight leading-tight text-white">{res.question}</h4>
                   </div>
-                  <div className="px-8 py-4 bg-neon-teal/10 text-neon-teal border border-neon-teal/20 rounded-3xl text-xl font-black shadow-lg shadow-neon-teal/5">
-                    {res.analysis?.score}<span className="text-xs text-neon-teal/50 ml-1">/100</span>
+                  <div className="px-8 py-4 bg-blue-500/10 text-blue-400 border border-blue-500/20 rounded-3xl text-xl font-black shadow-lg shadow-blue-500/5">
+                    {res.analysis?.score}<span className="text-xs text-blue-400/50 ml-1">/100</span>
                   </div>
                 </div>
                 
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-10 relative z-10">
                   <div className="space-y-4">
-                    <div className="text-[10px] font-black uppercase tracking-widest text-neutral-500 flex items-center gap-2">
+                    <div className="text-[10px] font-black uppercase tracking-widest text-slate-500 flex items-center gap-2">
                       <Mic className="w-3 h-3" />
                       Your Response
                     </div>
                     <div className="p-6 bg-white/[0.02] border border-white/5 rounded-[2rem] relative">
-                      <p className="text-neutral-400 text-sm leading-relaxed font-medium italic">"{res.answer}"</p>
+                      <p className="text-slate-400 text-sm leading-relaxed font-medium italic">"{res.answer}"</p>
                     </div>
                   </div>
                   <div className="space-y-4">
-                    <div className="text-[10px] font-black uppercase tracking-widest text-neon-teal flex items-center gap-2">
+                    <div className="text-[10px] font-black uppercase tracking-widest text-blue-400 flex items-center gap-2">
                       <Brain className="w-3 h-3" />
                       AI Insights & Feedback
                     </div>
-                    <div className="p-8 bg-neon-teal/[0.03] border border-neon-teal/10 rounded-[2rem]">
-                      <div className="text-sm text-neutral-300 leading-relaxed font-medium markdown-body">
+                    <div className="p-8 bg-blue-500/[0.03] border border-blue-500/10 rounded-[2rem]">
+                      <div className="text-sm text-slate-300 leading-relaxed font-medium markdown-body">
                         <ReactMarkdown>{res.analysis?.feedback}</ReactMarkdown>
                       </div>
                     </div>
@@ -270,7 +270,7 @@ export default function Report() {
         <footer className="mt-24 text-center">
           <button 
             onClick={() => navigate('/dashboard')}
-            className="neon-btn px-12 py-6"
+            className="btn-primary px-12 py-6"
           >
             Return to Dashboard
           </button>
