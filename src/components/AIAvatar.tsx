@@ -10,13 +10,13 @@ interface AIAvatarProps {
 
 export default function AIAvatar({ isSpeaking, score, mode = "boss" }: AIAvatarProps) {
   const getStatusColor = () => {
-    if (score > 80) return "text-emerald-400 shadow-emerald-500/20 border-emerald-500/50";
-    if (score > 50) return "text-blue-400 shadow-blue-500/20 border-blue-500/50";
-    return "text-red-400 shadow-red-500/20 border-red-500/50";
+    if (score > 80) return "text-neon-teal shadow-neon-teal/20 border-neon-teal/50";
+    if (score > 50) return "text-neon-lavender shadow-neon-lavender/20 border-neon-lavender/50";
+    return "text-neon-pink shadow-neon-pink/20 border-neon-pink/50";
   };
 
   return (
-    <div className="relative w-full h-full flex items-center justify-center bg-neutral-900/50 rounded-[3rem] border border-white/5 overflow-hidden group">
+    <div className="relative w-full h-full flex items-center justify-center bg-[#0D0F1A]/50 rounded-[3rem] border border-white/5 overflow-hidden group">
       {/* Background Pulse */}
       <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
         <motion.div
@@ -27,7 +27,7 @@ export default function AIAvatar({ isSpeaking, score, mode = "boss" }: AIAvatarP
           transition={{ duration: 2, repeat: Infinity }}
           className={cn(
             "w-[500px] h-[500px] rounded-full blur-[120px] transition-colors duration-1000",
-            score > 80 ? "bg-emerald-600" : score > 50 ? "bg-blue-600" : "bg-red-600"
+            score > 80 ? "bg-neon-teal/20" : score > 50 ? "bg-neon-lavender/20" : "bg-neon-pink/20"
           )}
         />
       </div>
@@ -64,7 +64,7 @@ export default function AIAvatar({ isSpeaking, score, mode = "boss" }: AIAvatarP
                 transition={{ duration: 4, repeat: Infinity, times: [0, 0.1, 0.2] }}
                 className={cn(
                   "w-5 h-5 rounded-full shadow-[0_0_15px_currentColor] transition-colors duration-500",
-                  score > 80 ? "bg-emerald-400" : score > 50 ? "bg-blue-400" : "bg-red-400"
+                  score > 80 ? "bg-neon-teal" : score > 50 ? "bg-neon-lavender" : "bg-neon-pink"
                 )} 
               />
               <motion.div 
@@ -75,7 +75,7 @@ export default function AIAvatar({ isSpeaking, score, mode = "boss" }: AIAvatarP
                 transition={{ duration: 4, repeat: Infinity, times: [0, 0.1, 0.2] }}
                 className={cn(
                   "w-5 h-5 rounded-full shadow-[0_0_15px_currentColor] transition-colors duration-500",
-                  score > 80 ? "bg-emerald-400" : score > 50 ? "bg-blue-400" : "bg-red-400"
+                  score > 80 ? "bg-neon-teal" : score > 50 ? "bg-neon-lavender" : "bg-neon-pink"
                 )} 
               />
             </div>
@@ -96,7 +96,7 @@ export default function AIAvatar({ isSpeaking, score, mode = "boss" }: AIAvatarP
                   }}
                   className={cn(
                     "w-2 rounded-full transition-colors duration-500",
-                    score > 80 ? "bg-emerald-500" : score > 50 ? "bg-blue-500" : "bg-red-500"
+                    score > 80 ? "bg-neon-teal" : score > 50 ? "bg-neon-lavender" : "bg-neon-pink"
                   )}
                 />
               ))}

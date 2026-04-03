@@ -4,12 +4,15 @@ import { useNavigate } from "react-router-dom";
 import { 
   Mic, MicOff, Video, VideoOff, Send, 
   Brain, Target, Activity, AlertCircle, CheckCircle2,
-  ChevronRight, Loader2, BarChart3, Globe, Shirt
+  ChevronRight, Loader2, BarChart3, Globe, Shirt,
+  Clock, Sparkles, Zap, MessageSquare, Shield
 } from "lucide-react";
 import { toast } from "react-hot-toast";
 import { interviewService } from "../lib/gemini";
 import { cn } from "../lib/utils";
 import AIAvatar from "../components/AIAvatar";
+import BackButton from "../components/BackButton";
+import LiveInterviewer from "../components/LiveInterviewer";
 
 const LANGUAGES = [
   { code: "English", name: "English" },
@@ -40,6 +43,23 @@ export default function Interview() {
   const [isAnalyzingDressing, setIsAnalyzingDressing] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [timer, setTimer] = useState(0);
+  const [transcript, setTranscript] = useState("");
+  const [isLiveMode, setIsLiveMode] = useState(false);
+  const [profile, setProfile] = useState<any>({});
+
+  const formatTime = (seconds: number) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins}:${secs.toString().padStart(2, "0")}`;
+  };
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setTimer(prev => prev + 1);
+    }, 1000);
+    return () => clearInterval(interval);
+  }, []);
 
   useEffect(() => {
     const storedUser = localStorage.getItem("hirevision_user");
@@ -59,20 +79,33 @@ export default function Interview() {
       try {
         const s = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
         setStream(s);
-        if (videoRef.current) videoRef.current.srcObject = s;
+        if (videoRef.current) {
+          videoRef.current.srcObject = s;
+          videoRef.current.onloadedmetadata = () => {
+            videoRef.current?.play().catch(console.error);
+          };
+        }
       } catch (err) {
         toast.error("Could not access camera or microphone");
       }
     };
 
-    const profile = JSON.parse(localStorage.getItem("hirevision_profile") || "{}");
-    if (profile.language) setLanguage(profile.language);
+    const profileData = JSON.parse(localStorage.getItem("hirevision_profile") || "{}");
+    setProfile(profileData);
+    if (profileData.language) setLanguage(profileData.language);
 
     startMedia();
     return () => {
       stream?.getTracks().forEach(t => t.stop());
     };
   }, []);
+
+  // Ensure video stays connected if ref changes
+  useEffect(() => {
+    if (videoRef.current && stream) {
+      videoRef.current.srcObject = stream;
+    }
+  }, [stream]);
 
   useEffect(() => {
     if (language) {
@@ -160,7 +193,7 @@ export default function Interview() {
 
     setIsAnalyzingDressing(true);
     try {
-      const result = await interviewService.analyzeDressing(base64);
+      const result = await interviewService.analyzeDressing(base64, language);
       setDressingInfo(result);
       if (result.isFormal) {
         toast.success("Professional attire detected!");
@@ -191,6 +224,17 @@ export default function Interview() {
           transcript += event.results[i][0].transcript;
         }
         setCurrentAnswer(transcript);
+
+        // Check for "Done" keyword to auto-submit
+        if (transcript.toLowerCase().includes("done") || transcript.toLowerCase().includes("ختم") || transcript.toLowerCase().includes("مکمل")) {
+          const cleanTranscript = transcript.replace(/done|ختم|مکمل/gi, "").trim();
+          if (cleanTranscript) {
+            setCurrentAnswer(cleanTranscript);
+            handleNext(cleanTranscript);
+            recognitionRef.current?.stop();
+            setIsListening(false);
+          }
+        }
       };
 
       recognitionRef.current.onerror = (event: any) => {
@@ -198,7 +242,7 @@ export default function Interview() {
         setIsListening(false);
       };
     }
-  }, []);
+  }, [currentIdx, questions, language]);
 
   const toggleListening = () => {
     if (isListening) {
@@ -227,7 +271,7 @@ export default function Interview() {
     if (!base64) return;
 
     try {
-      const result = await interviewService.analyzeBehavior(base64);
+      const result = await interviewService.analyzeBehavior(base64, language);
       setBehavioralStats({
         eyeContact: result.eyeContact,
         handMovements: result.handMovements,
@@ -240,21 +284,30 @@ export default function Interview() {
     }
   };
 
-  const handleNext = async () => {
-    if (!currentAnswer.trim()) {
+  const handleNext = async (overrideAnswer?: string) => {
+    const answerToAnalyze = overrideAnswer || currentAnswer;
+    if (!answerToAnalyze.trim()) {
       toast.error("Please provide an answer first");
       return;
     }
 
     setIsAnalyzing(true);
     try {
-      const analysis = await interviewService.analyzeAnswer(questions[currentIdx], currentAnswer, language);
-      const newAnswers = [...answers, { question: questions[currentIdx], answer: currentAnswer, analysis }];
+      const analysis = await interviewService.analyzeAnswer(questions[currentIdx], answerToAnalyze, language);
+      const newAnswers = [...answers, { question: questions[currentIdx], answer: answerToAnalyze, analysis }];
       setAnswers(newAnswers);
       
+      // AI speaks feedback
+      if (analysis.feedback) {
+        speakQuestion(analysis.feedback);
+      }
+
       if (currentIdx < questions.length - 1) {
-        setCurrentIdx(currentIdx + 1);
-        setCurrentAnswer("");
+        // Wait for feedback to finish speaking before moving to next question
+        setTimeout(() => {
+          setCurrentIdx(currentIdx + 1);
+          setCurrentAnswer("");
+        }, 3000);
       } else {
         setIsSaving(true);
         const finalScore = Math.round(newAnswers.reduce((acc, curr) => acc + (curr.analysis?.score || 0), 0) / newAnswers.length);
@@ -303,192 +356,353 @@ export default function Interview() {
 
   if (isGenerating) {
     return (
-      <div className="h-screen flex flex-col items-center justify-center gap-6">
+      <div className="h-screen flex flex-col items-center justify-center gap-6 relative bg-[#0D0F1A]">
+        <BackButton />
         <div className="relative">
-          <div className="w-24 h-24 border-4 border-blue-600/20 border-t-blue-600 rounded-full animate-spin" />
-          <Brain className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-blue-600 w-10 h-10" />
+          <div className="w-24 h-24 border-4 border-neon-teal/20 border-t-neon-teal rounded-full animate-spin shadow-[0_0_20px_rgba(0,255,200,0.2)]" />
+          <Brain className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-neon-teal w-10 h-10" />
         </div>
         <div className="text-center">
-          <h2 className="text-2xl font-bold mb-2">AI is Preparing Your Interview</h2>
-          <p className="text-neutral-400">Analyzing your profile and generating tailored questions in {language}...</p>
+          <h2 className="text-2xl font-black font-display mb-2 tracking-tight">AI is Preparing Your <span className="text-neon-pink">Interview</span></h2>
+          <p className="text-neutral-500 font-medium uppercase tracking-widest text-[10px]">Analyzing your profile and generating tailored questions in {language}...</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="h-screen flex flex-col bg-neutral-950 overflow-hidden">
+    <div className="h-screen flex flex-col bg-[#0D0F1A] overflow-hidden relative font-sans">
+      <div className="absolute top-0 left-0 w-full h-full bg-[radial-gradient(circle_at_50%_50%,rgba(0,255,200,0.03),transparent)] -z-10" />
+      
+      <BackButton />
+
       {/* Header */}
-      <header className="px-6 py-4 border-b border-white/5 flex justify-between items-center bg-neutral-950/50 backdrop-blur-xl z-20">
-        <div className="flex items-center gap-4">
-          <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center">
-            <Brain className="text-white w-5 h-5" />
-          </div>
-          <div>
-            <h1 className="font-bold text-sm">HireVision AI Interview</h1>
-            <p className="text-xs text-neutral-500">Question {currentIdx + 1} of {questions.length}</p>
+      <header className="px-8 py-6 border-b border-white/5 flex justify-between items-center bg-[#0D0F1A]/50 backdrop-blur-xl z-20">
+        <div className="flex items-center gap-6 ml-12">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 bg-neon-teal rounded-xl flex items-center justify-center shadow-lg shadow-neon-teal/20">
+              <Brain className="text-black w-6 h-6" />
+            </div>
+            <div>
+              <h1 className="text-xl font-black font-display tracking-tight">Neural <span className="text-neon-pink">Interview</span></h1>
+              <p className="text-[10px] font-bold text-neutral-500 uppercase tracking-widest">Live Simulation Mode</p>
+            </div>
           </div>
         </div>
-        
-        <div className="flex items-center gap-4">
-          <div className="flex items-center gap-2 px-3 py-1.5 bg-white/5 border border-white/10 rounded-full">
-            <Globe className="w-3.5 h-3.5 text-blue-400" />
-            <select 
-              value={language} 
-              onChange={(e) => setLanguage(e.target.value)}
-              className="bg-transparent text-xs font-medium focus:outline-none"
-            >
-              {LANGUAGES.map(l => <option key={l.code} value={l.code} className="bg-neutral-900">{l.name}</option>)}
-            </select>
-          </div>
 
-          <div className="flex items-center gap-2 px-3 py-1.5 bg-red-500/10 text-red-500 border border-red-500/20 rounded-full text-xs font-medium animate-pulse">
-            <div className="w-1.5 h-1.5 bg-red-500 rounded-full" />
-            LIVE ANALYSIS
+        <div className="flex items-center gap-8">
+          <div className="flex items-center gap-2 p-1 bg-white/5 border border-white/10 rounded-2xl">
+            <button
+              onClick={() => setIsLiveMode(false)}
+              className={cn(
+                "px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all",
+                !isLiveMode ? "bg-neon-teal text-black shadow-lg shadow-neon-teal/20" : "text-neutral-500 hover:text-neutral-300"
+              )}
+            >
+              Standard
+            </button>
+            <button
+              onClick={() => setIsLiveMode(true)}
+              className={cn(
+                "px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-2",
+                isLiveMode ? "bg-neon-pink text-white shadow-lg shadow-neon-pink/20" : "text-neutral-500 hover:text-neutral-300"
+              )}
+            >
+              <Zap className="w-3 h-3" />
+              Live AI (Era)
+            </button>
+          </div>
+          <div className="flex items-center gap-3 px-4 py-2 bg-white/5 border border-white/10 rounded-full">
+            <div className="w-2 h-2 bg-neon-teal rounded-full animate-pulse shadow-[0_0_8px_#00FFC8]" />
+            <span className="text-xs font-black uppercase tracking-widest text-neutral-400">Question {currentIdx + 1} / {questions.length}</span>
+          </div>
+          <div className="flex items-center gap-3 px-4 py-2 bg-white/5 border border-white/10 rounded-full">
+            <Clock className="w-4 h-4 text-neon-lavender" />
+            <span className="text-xs font-black font-mono tracking-widest">{formatTime(timer)}</span>
           </div>
         </div>
       </header>
 
-      <main className="flex-1 flex flex-col lg:flex-row gap-6 p-6 overflow-hidden">
-        {/* Left: AI Avatar & Stats */}
-        <div className="flex-1 flex flex-col gap-6 min-w-0">
-          <div className="relative flex-1">
-            <AIAvatar isSpeaking={isSpeaking} score={answers[answers.length - 1]?.analysis?.score || 70} />
-            
-            {/* Real-time Score HUD */}
-            <div className="absolute top-6 right-6 p-4 rounded-2xl bg-black/40 backdrop-blur-md border border-white/10 text-center min-w-[100px]">
-              <div className="text-[10px] font-bold uppercase tracking-widest text-neutral-500 mb-1">Live Score</div>
-              <div className={cn(
-                "text-3xl font-black",
-                (answers[answers.length - 1]?.analysis?.score || 0) > 70 ? "text-emerald-400" : (answers[answers.length - 1]?.analysis?.score || 0) > 40 ? "text-blue-400" : "text-red-400"
-              )}>
-                {answers[answers.length - 1]?.analysis?.score || "--"}
+      <main className="flex-1 flex flex-col lg:flex-row p-8 gap-8 max-w-[1600px] mx-auto w-full overflow-hidden">
+        {/* Left: AI Avatar & Question */}
+        <div className="flex-1 flex flex-col gap-8 min-w-0">
+          {isLiveMode ? (
+            <div className="flex-1 flex flex-col gap-8">
+              <LiveInterviewer 
+                language={language} 
+                profile={profile}
+                onTranscript={(text, role) => {
+                  if (role === "model") setTranscript(text);
+                }}
+              />
+              <div className="glass-card p-8 flex-1 overflow-y-auto max-h-[400px]">
+                <div className="flex items-center gap-2 mb-4">
+                  <MessageSquare className="w-4 h-4 text-neon-teal" />
+                  <span className="text-[10px] font-black uppercase tracking-widest text-neutral-500">Live Conversation</span>
+                </div>
+                <div className="space-y-4">
+                  {transcript && (
+                    <motion.div
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      className="p-4 bg-white/5 border border-white/10 rounded-2xl text-sm leading-relaxed text-neutral-300"
+                    >
+                      {transcript}
+                    </motion.div>
+                  )}
+                  <p className="text-xs text-neutral-600 italic">Era is listening to your responses in real-time...</p>
+                </div>
               </div>
             </div>
+          ) : (
+            <>
+              <div className="glass-card flex-1 p-10 flex flex-col justify-center relative overflow-hidden group">
+            <div className="absolute top-0 right-0 p-8 opacity-10 group-hover:opacity-20 transition-opacity">
+              <Brain className="w-40 h-40" />
+            </div>
+            
+            <AnimatePresence mode="wait">
+              <motion.div
+                key={currentIdx}
+                initial={{ opacity: 0, x: -20 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: 20 }}
+                className="relative z-10"
+              >
+                <div className="inline-flex items-center gap-2 px-3 py-1 bg-neon-pink/10 text-neon-pink border border-neon-pink/20 rounded-full text-[10px] font-black uppercase tracking-widest mb-8">
+                  <Target className="w-3 h-3" />
+                  Current Question
+                </div>
+                <h2 className="text-4xl md:text-5xl font-black font-display leading-[1.1] tracking-tight mb-12 drop-shadow-[0_0_10px_rgba(255,255,255,0.1)]">
+                  {questions[currentIdx]}
+                </h2>
+                
+                <div className="flex flex-wrap gap-4">
+                  <div className="px-4 py-2 bg-white/5 border border-white/10 rounded-xl flex items-center gap-2">
+                    <Sparkles className="w-4 h-4 text-neon-yellow" />
+                    <span className="text-xs font-bold text-neutral-400 uppercase tracking-widest">Behavioral Focus</span>
+                  </div>
+                  <div className="px-4 py-2 bg-white/5 border border-white/10 rounded-xl flex items-center gap-2">
+                    <Zap className="w-4 h-4 text-neon-teal" />
+                    <span className="text-xs font-bold text-neutral-400 uppercase tracking-widest">Adaptive Difficulty</span>
+                  </div>
+                </div>
+              </motion.div>
+            </AnimatePresence>
           </div>
 
-          {/* Real-time Insights */}
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-            {[
-              { icon: Target, label: "Eye Contact", val: behavioralStats.eyeContact, color: "text-blue-400" },
-              { icon: Brain, label: "Hands", val: behavioralStats.handMovements, color: "text-purple-400" },
-              { icon: BarChart3, label: "Expressions", val: behavioralStats.facialExpressions, color: "text-emerald-400" },
-              { icon: Shirt, label: "Dressing", val: dressingInfo?.score || 0, color: "text-amber-400", action: analyzeDressing, loading: isAnalyzingDressing }
-            ].map((insight, i) => (
-              <div key={i} className="p-4 bg-white/5 border border-white/10 rounded-2xl relative group">
-                <div className="flex items-center gap-2 mb-2">
-                  <insight.icon className={cn("w-4 h-4", insight.color)} />
-                  <span className="text-[10px] font-bold uppercase tracking-widest text-neutral-500">{insight.label}</span>
-                </div>
-                <div className="text-xl font-bold">
-                  {insight.loading ? <Loader2 className="w-5 h-5 animate-spin" /> : (insight.val === 0 ? "--" : `${Math.round(insight.val)}%`)}
-                </div>
-                {insight.action && (
-                  <button 
-                    onClick={insight.action}
-                    className="absolute top-2 right-2 p-1.5 bg-white/5 hover:bg-white/10 rounded-lg opacity-0 group-hover:opacity-100 transition-all"
-                  >
-                    <Activity className="w-3 h-3" />
-                  </button>
-                )}
+          {/* Response Area */}
+          <div className="glass-card p-8">
+            <div className="flex items-center justify-between mb-6">
+              <div className="flex items-center gap-3">
+                <div className={cn(
+                  "w-3 h-3 rounded-full animate-pulse",
+                  isListening ? "bg-red-500 shadow-[0_0_10px_rgba(239,68,68,0.5)]" : "bg-neutral-700"
+                )} />
+                <span className="text-xs font-black uppercase tracking-widest text-neutral-500">
+                  {isListening ? "Listening for your response..." : "Microphone Standby"}
+                </span>
               </div>
-            ))}
-          </div>
-        </div>
+              {isListening && (
+                <div className="flex gap-1">
+                  {[1, 2, 3, 4, 5].map(i => (
+                    <motion.div
+                      key={i}
+                      animate={{ height: [8, 16, 8] }}
+                      transition={{ duration: 0.5, repeat: Infinity, delay: i * 0.1 }}
+                      className="w-1 bg-blue-500 rounded-full"
+                    />
+                  ))}
+                </div>
+              )}
+            </div>
+            
+            <div className="relative">
+              <textarea
+                value={transcript || currentAnswer}
+                onChange={(e) => setCurrentAnswer(e.target.value)}
+                placeholder="Your answer will appear here as you speak..."
+                className="w-full h-40 bg-white/[0.02] border border-white/10 rounded-2xl p-6 text-lg font-medium focus:outline-none focus:ring-2 focus:ring-neon-yellow/50 transition-all resize-none placeholder:text-neutral-700"
+              />
+              {!isListening && !currentAnswer && !transcript && (
+                <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                  <p className="text-neutral-600 font-bold uppercase tracking-widest text-xs">Click the microphone to start speaking</p>
+                </div>
+              )}
+            </div>
 
-        {/* Right: User Video & Interaction */}
-        <div className="w-full lg:w-[450px] flex flex-col gap-6">
-          {/* User Video Feed */}
-          <div className="relative h-64 bg-neutral-900 rounded-[2rem] overflow-hidden border border-white/5 shadow-2xl">
-            <video 
-              ref={videoRef} 
-              autoPlay 
-              muted 
-              playsInline 
-              className={cn("w-full h-full object-cover transition-opacity duration-500", !isVideoOn && "opacity-0")}
+            <div className="flex gap-4 mt-6">
+              <button
+                onClick={toggleListening}
+                className={cn(
+                  "flex-1 py-5 rounded-2xl font-black uppercase tracking-widest transition-all flex items-center justify-center gap-3",
+                  isListening 
+                    ? "bg-red-600/10 text-red-500 border border-red-600/20 hover:bg-red-600/20" 
+                    : "neon-btn-teal"
+                )}
+              >
+                {isListening ? <MicOff className="w-6 h-6" /> : <Mic className="w-6 h-6" />}
+                {isListening ? "Stop Listening" : "Start Speaking"}
+              </button>
+              <button
+                onClick={() => handleNext()}
+                disabled={isAnalyzing || (!currentAnswer && !transcript)}
+                className="neon-btn"
+              >
+                {isAnalyzing ? <Loader2 className="w-6 h-6 animate-spin" /> : <Send className="w-6 h-6" />}
+                {currentIdx === questions.length - 1 ? "Finish Interview" : "Submit Answer"}
+              </button>
+            </div>
+          </div>
+        </>
+      )}
+    </div>
+
+        {/* Right: Camera & Analysis HUD */}
+        <div className="w-full lg:w-[450px] flex flex-col gap-8">
+          <div className="glass-card overflow-hidden relative aspect-video lg:aspect-square group">
+            <video
+              ref={videoRef}
+              autoPlay
+              playsInline
+              muted
+              className={cn("w-full h-full object-cover grayscale-[0.2] group-hover:grayscale-0 transition-all duration-700", !isVideoOn && "opacity-0")}
             />
             {!isVideoOn && (
-              <div className="absolute inset-0 flex items-center justify-center bg-neutral-800">
-                <VideoOff className="w-12 h-12 text-neutral-600" />
+              <div className="absolute inset-0 flex items-center justify-center bg-neutral-900">
+                <VideoOff className="w-16 h-16 text-neutral-700" />
               </div>
             )}
-            <div className="absolute bottom-4 left-4 flex gap-2">
-              <button 
-                onClick={() => setIsMicOn(!isMicOn)}
-                className={cn("p-2 rounded-lg transition-all", isMicOn ? "bg-black/40 backdrop-blur-md" : "bg-red-500/20 text-red-500")}
-              >
-                {isMicOn ? <Mic className="w-4 h-4" /> : <MicOff className="w-4 h-4" />}
-              </button>
+            
+            {/* HUD Overlay */}
+            <div className="absolute inset-0 pointer-events-none">
+              {/* Corner Accents */}
+              <div className="absolute top-4 left-4 w-8 h-8 border-t-2 border-l-2 border-neon-teal/50" />
+              <div className="absolute top-4 right-4 w-8 h-8 border-t-2 border-r-2 border-neon-teal/50" />
+              <div className="absolute bottom-4 left-4 w-8 h-8 border-b-2 border-l-2 border-neon-teal/50" />
+              <div className="absolute bottom-4 right-4 w-8 h-8 border-b-2 border-r-2 border-neon-teal/50" />
+              
+              {/* Scanning Line */}
+              <motion.div 
+                animate={{ top: ["0%", "100%", "0%"] }}
+                transition={{ duration: 4, repeat: Infinity, ease: "linear" }}
+                className="absolute left-0 w-full h-[2px] bg-neon-teal/20 shadow-[0_0_15px_rgba(0,255,200,0.5)] z-10"
+              />
+
+              {/* HUD Data */}
+              <div className="absolute top-8 left-8 space-y-4">
+                <div className="flex items-center gap-2">
+                  <div className="w-2 h-2 bg-neon-teal rounded-full animate-ping" />
+                  <span className="text-[10px] font-black uppercase tracking-widest text-neon-teal drop-shadow-lg">Face Tracking Active</span>
+                </div>
+                <div className="space-y-1">
+                  <p className="text-[8px] font-bold text-neutral-500 uppercase tracking-widest">Confidence Index</p>
+                  <div className="w-24 h-1 bg-white/10 rounded-full overflow-hidden">
+                    <motion.div 
+                      animate={{ width: ["60%", "85%", "75%"] }}
+                      transition={{ duration: 2, repeat: Infinity }}
+                      className="h-full bg-neon-teal shadow-[0_0_10px_rgba(0,255,200,0.5)]"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div className="absolute bottom-8 right-8 text-right">
+                <p className="text-[10px] font-black uppercase tracking-widest text-neutral-400 mb-1">Attire Score</p>
+                <p className="text-3xl font-black font-display text-neon-teal">{dressingInfo?.score || "--"}%</p>
+                <p className="text-[8px] font-bold text-neon-teal uppercase tracking-widest mt-1">Professional</p>
+              </div>
+            </div>
+
+            <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex gap-2">
               <button 
                 onClick={() => setIsVideoOn(!isVideoOn)}
-                className={cn("p-2 rounded-lg transition-all", isVideoOn ? "bg-black/40 backdrop-blur-md" : "bg-red-500/20 text-red-500")}
+                className="p-3 bg-black/50 backdrop-blur-md border border-white/10 rounded-full hover:bg-black/70 transition-all"
               >
-                {isVideoOn ? <Video className="w-4 h-4" /> : <VideoOff className="w-4 h-4" />}
+                {isVideoOn ? <Video className="w-5 h-5" /> : <VideoOff className="w-5 h-5 text-red-500" />}
+              </button>
+              <button 
+                onClick={analyzeDressing}
+                disabled={isAnalyzingDressing}
+                className="p-3 bg-black/50 backdrop-blur-md border border-white/10 rounded-full hover:bg-black/70 transition-all"
+              >
+                {isAnalyzingDressing ? <Loader2 className="w-5 h-5 animate-spin" /> : <Shirt className="w-5 h-5 text-amber-400" />}
               </button>
             </div>
           </div>
 
-          {/* Interaction Panel */}
-          <div className="flex-1 flex flex-col bg-white/5 border border-white/10 rounded-[2rem] overflow-hidden">
-            <div className="p-6 border-b border-white/10 bg-white/[0.02]">
-              <h3 className="text-sm font-bold uppercase tracking-widest text-neutral-500 mb-4">Interviewer</h3>
-              <AnimatePresence mode="wait">
-                <motion.div
-                  key={currentIdx}
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -10 }}
-                  className="text-lg font-medium leading-relaxed"
-                >
-                  {questions[currentIdx]}
-                </motion.div>
-              </AnimatePresence>
+          <div className="glass-card p-8 flex-1">
+            <h3 className="text-lg font-black mb-6 flex items-center gap-3 font-display uppercase tracking-widest">
+              <Activity className="w-5 h-5 text-neon-teal" />
+              Real-time Metrics
+            </h3>
+            <div className="space-y-6">
+              {[
+                { label: "Eye Contact", val: `${behavioralStats.eyeContact}%`, icon: Target, color: "text-neon-teal" },
+                { label: "Speech Clarity", val: "74%", icon: MessageSquare, color: "text-neon-pink" },
+                { label: "Confidence", val: "92%", icon: Zap, color: "text-neon-yellow" },
+                { label: "Dressing Score", val: dressingInfo?.score ? `${dressingInfo.score}%` : "--", icon: Shield, color: "text-neon-lavender" },
+              ].map((metric, i) => (
+                <div key={i} className="flex items-center justify-between p-4 bg-white/[0.02] border border-white/5 rounded-2xl">
+                  <div className="flex items-center gap-3">
+                    <metric.icon className={cn("w-4 h-4", metric.color)} />
+                    <span className="text-[10px] font-black uppercase tracking-widest text-neutral-400">{metric.label}</span>
+                  </div>
+                  <span className="text-sm font-black">{metric.val}</span>
+                </div>
+              ))}
             </div>
 
-            <div className="flex-1 p-6 overflow-y-auto space-y-4">
-              <div className="flex justify-between items-center">
-                <div className="text-[10px] font-bold uppercase tracking-widest text-neutral-500">Your Response</div>
-                <button 
-                  onClick={toggleListening}
-                  className={cn(
-                    "flex items-center gap-2 px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-widest transition-all",
-                    isListening ? "bg-red-500/20 text-red-500 animate-pulse" : "bg-white/5 text-neutral-500 hover:bg-white/10"
-                  )}
-                >
-                  <div className={cn("w-1.5 h-1.5 rounded-full", isListening ? "bg-red-500" : "bg-neutral-500")} />
-                  {isListening ? "Listening..." : "Voice Input"}
-                </button>
+            <div className="mt-8 p-4 bg-neon-teal/10 border border-neon-teal/20 rounded-2xl">
+              <div className="flex items-center gap-2 mb-2">
+                <Sparkles className="w-4 h-4 text-neon-teal" />
+                <span className="text-[10px] font-black uppercase tracking-widest text-neon-teal">AI Tip</span>
               </div>
-              <textarea
-                value={currentAnswer}
-                onChange={(e) => setCurrentAnswer(e.target.value)}
-                placeholder="Type your answer here or speak..."
-                className="w-full h-full bg-transparent resize-none focus:outline-none text-neutral-300 leading-relaxed"
-              />
-            </div>
-
-            <div className="p-6 bg-white/[0.02] border-t border-white/10">
-              <button
-                onClick={handleNext}
-                disabled={isAnalyzing}
-                className="w-full py-4 bg-blue-600 hover:bg-blue-500 disabled:bg-blue-600/50 text-white rounded-2xl font-bold transition-all flex items-center justify-center gap-2 shadow-lg shadow-blue-600/20"
-              >
-                {isAnalyzing ? (
-                  <>
-                    <Loader2 className="w-5 h-5 animate-spin" />
-                    Analyzing Response...
-                  </>
-                ) : (
-                  <>
-                    {currentIdx === questions.length - 1 ? "Finish Interview" : "Next Question"}
-                    <ChevronRight className="w-5 h-5" />
-                  </>
-                )}
-              </button>
+              <p className="text-xs text-neutral-400 leading-relaxed font-medium">
+                Try to maintain more consistent eye contact with the camera while answering behavioral questions.
+              </p>
             </div>
           </div>
         </div>
       </main>
+
+      {/* Analysis Overlay */}
+      <AnimatePresence>
+        {isAnalyzing && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-neutral-950/80 backdrop-blur-xl z-50 flex items-center justify-center p-8"
+          >
+            <div className="max-w-md w-full text-center">
+              <div className="w-24 h-24 bg-neon-teal/10 rounded-3xl flex items-center justify-center mx-auto mb-8 relative">
+                <Brain className="w-12 h-12 text-neon-teal animate-pulse" />
+                <div className="absolute inset-0 border-4 border-neon-teal border-t-transparent rounded-3xl animate-spin" />
+              </div>
+              <h2 className="text-3xl font-black font-display mb-4 text-neon-teal">Analyzing Performance</h2>
+              <p className="text-neutral-400 font-medium leading-relaxed">
+                Our neural network is evaluating your response, tone, and behavioral cues...
+              </p>
+              <div className="mt-12 flex justify-center gap-2">
+                <div className="thinking-dot" />
+                <div className="thinking-dot" />
+                <div className="thinking-dot" />
+              </div>
+              <div className="mt-8 space-y-2">
+                <div className="w-full h-1.5 bg-white/5 rounded-full overflow-hidden">
+                  <motion.div 
+                    animate={{ width: ["0%", "100%"] }}
+                    transition={{ duration: 2, repeat: Infinity }}
+                    className="h-full bg-neon-teal shadow-[0_0_10px_#00FFC8]"
+                  />
+                </div>
+                <p className="text-[10px] font-black text-neutral-600 uppercase tracking-[0.2em]">Processing Neural Weights</p>
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

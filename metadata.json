@@ -1,5 +1,8 @@
 {
-  "name": "HireVision AI",
+  "name": "HireVision AI123",
   "description": "Real-time AI-powered interview simulation platform with behavioral analysis and performance tracking.",
-  "requestFramePermissions": ["camera", "microphone"]
+  "requestFramePermissions": [
+    "camera",
+    "microphone"
+  ]
 }
